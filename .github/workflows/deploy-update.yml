@@ -52,7 +52,20 @@ jobs:
 
           # Keep the installation repository's commit history while replacing
           # its complete tracked tree with the current upstream tree.
+          # Cardtonic publishes the self-hosted image from release.yml. Upstream
+          # has no copy of that workflow, and this file is what puts it back, so
+          # both have to survive the tree replacement.
+          mkdir -p /tmp/cardtonic-keep
+          cp .github/workflows/release.yml /tmp/cardtonic-keep/release.yml
+          cp .github/workflows/deploy-update.yml /tmp/cardtonic-keep/deploy-update.yml
+
           git read-tree --reset -u "${upstream_ref}"
+
+          mkdir -p .github/workflows
+          cp /tmp/cardtonic-keep/release.yml .github/workflows/release.yml
+          cp /tmp/cardtonic-keep/deploy-update.yml .github/workflows/deploy-update.yml
+          git add .github/workflows/release.yml .github/workflows/deploy-update.yml
+
           if git diff --cached --quiet; then
             echo "Repository is already up to date."
             exit 0
