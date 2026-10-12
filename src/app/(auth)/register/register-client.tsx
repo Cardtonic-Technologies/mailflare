@@ -25,6 +25,7 @@ export function RegisterClient() {
   const { t } = useLanguage();
   const router = useRouter();
   const [hasAdminAccount, setHasAdminAccount] = useState<boolean | null>(null);
+  const [runtime, setRuntime] = useState<"node" | "cloudflare" | null>(null);
   const [hasPrimaryDomain, setHasPrimaryDomain] = useState<boolean | null>(
     null,
   );
@@ -52,9 +53,16 @@ export function RegisterClient() {
   }, []);
 
   const accountDomain = setupDomain ?? primaryDomain;
+  const keepExistingMx = runtime === "node";
 
   useEffect(() => {
     if (step !== 3 || !accountDomain) return;
+    if (keepExistingMx) {
+      setMxChecking(false);
+      setMxRecordsExist(false);
+      setReplaceMxRecords(false);
+      return;
+    }
 
     let active = true;
     setMxChecking(true);
@@ -81,7 +89,7 @@ export function RegisterClient() {
     return () => {
       active = false;
     };
-  }, [step, accountDomain, mxCheckRevision, t]);
+  }, [step, accountDomain, mxCheckRevision, keepExistingMx, t]);
 
   async function runPreparation() {
     setLoading(true);
@@ -99,6 +107,7 @@ export function RegisterClient() {
 
       const data = await getSetupStatus();
       setHasAdminAccount(data.hasAdminAccount);
+      setRuntime(data.runtime === "node" ? "node" : "cloudflare");
       setHasPrimaryDomain(data.hasPrimaryDomain);
       setPrimaryDomain(data.primaryDomain?.hostname ?? null);
       setPrimaryDomainSendingRequested(data.primaryDomain?.sendingRequested ?? null);
@@ -320,26 +329,28 @@ export function RegisterClient() {
               {t("setup.zoneHint")}
             </p>
           </div>
-          <div className="flex items-center justify-between gap-4 rounded-2xl bg-neutral-50 px-4 py-3">
-            <div>
-              <Label htmlFor="setup-enable-sending">{t("setup.enableSending")}</Label>
-              <p className="mt-1 text-xs leading-5 text-neutral-500">
-                {domainChecking
-                  ? t("setup.checkingCloudflare")
-                  : domainCheck
-                    ? enableSending
-                      ? t("setup.requiredToSend")
-                      : t("setup.receiveOnly")
-                    : t("setup.enterDomain")}
-              </p>
+          {runtime !== "node" && (
+            <div className="flex items-center justify-between gap-4 rounded-2xl bg-neutral-50 px-4 py-3">
+              <div>
+                <Label htmlFor="setup-enable-sending">{t("setup.enableSending")}</Label>
+                <p className="mt-1 text-xs leading-5 text-neutral-500">
+                  {domainChecking
+                    ? t("setup.checkingCloudflare")
+                    : domainCheck
+                      ? enableSending
+                        ? t("setup.requiredToSend")
+                        : t("setup.receiveOnly")
+                      : t("setup.enterDomain")}
+                </p>
+              </div>
+              <Switch
+                id="setup-enable-sending"
+                checked={enableSending}
+                onCheckedChange={setEnableSending}
+                disabled={domainChecking || !domainCheck}
+              />
             </div>
-            <Switch
-              id="setup-enable-sending"
-              checked={enableSending}
-              onCheckedChange={setEnableSending}
-              disabled={domainChecking || !domainCheck}
-            />
-          </div>
+          )}
           {domainCheck && (
             <div className="flex items-center gap-3 rounded-2xl bg-green-50 px-4 py-3 text-sm text-green-700">
               <CheckCircle2 className="h-4 w-4" />
@@ -361,7 +372,7 @@ export function RegisterClient() {
         </form>
       ) : (
         <form method="post" onSubmit={onSubmit} className="space-y-5">
-					{mxChecking && (
+					{mxChecking && !keepExistingMx && (
 						<div className="flex items-center gap-3 rounded-2xl bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
 							<LoaderCircle className="h-4 w-4 animate-spin" />
 							{t("setup.checkingMx")}
@@ -373,7 +384,7 @@ export function RegisterClient() {
 							{t("setup.noMx")}
 						</div>
 					)}
-					{mxRecordsExist === true && (
+					{!keepExistingMx && mxRecordsExist === true && (
 						<label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-900">
 							<Checkbox
 								checked={replaceMxRecords}
@@ -451,7 +462,7 @@ export function RegisterClient() {
 					<Button
 						type="submit"
 						className="h-11 w-full rounded-full px-6 active:scale-[0.98] mt-8"
-						disabled={loading || mxChecking || mxRecordsExist === null || (mxRecordsExist && !replaceMxRecords) || hasAdminAccount === null || hasPrimaryDomain === null}
+						disabled={loading || hasAdminAccount === null || hasPrimaryDomain === null || (!keepExistingMx && (mxChecking || mxRecordsExist === null || (mxRecordsExist && !replaceMxRecords)))}
 					>
 						{loading ? t("setup.creating") : t("setup.createAccount")}
 					</Button>

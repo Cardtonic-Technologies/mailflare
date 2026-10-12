@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { hasAdminAccount } from "@/lib/auth/setup";
 import { getEnv } from "@/lib/cloudflare";
+import { isNodeRuntime } from "@/lib/runtime";
 import { getPrimaryDomain } from "@/lib/user";
 
 export async function GET() {
@@ -13,6 +14,7 @@ export async function GET() {
 		return NextResponse.json({
 			hasAdminAccount: adminAccountExists,
 			hasPrimaryDomain: !!domain,
+			runtime: isNodeRuntime(env) ? "node" : "cloudflare",
 			primaryDomain: domain
 				? { hostname: domain.hostname, sendingRequested: domain.sendingRequested }
 				: null,

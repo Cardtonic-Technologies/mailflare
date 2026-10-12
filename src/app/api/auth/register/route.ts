@@ -18,6 +18,7 @@ import { RequestBodyTooLargeError } from "@/lib/http/errors";
 import { verifyTurnstileToken } from "@/lib/auth/turnstile";
 import { getDomainProvisioningError } from "@/lib/domains/errors";
 import { ensureBookingUsername } from "@/lib/booking/username";
+import { isNodeRuntime } from "@/lib/runtime";
 
 export async function POST(request: Request) {
 	const env = getEnv();
@@ -71,15 +72,29 @@ export async function POST(request: Request) {
 	let changes: DomainProvisioningChanges | null = null;
 	try {
 		await ensureBookingUsername(env, userId, email);
-		const added = await addDomainForUser(env, userId, domainName, {
-			enableRouting: true,
-			enableSending: firstRunParsed.data.enableSending ?? true,
-			replaceMxRecords: firstRunParsed.data.replaceMxRecords,
-		});
+		// The self-hosted app receives and sends through SES. Cloudflare Email Routing
+		// would delete the SES MX records, then fail looking for a Worker this install
+		// does not run, and the new account would be rolled back.
+		const nodeRuntime = isNodeRuntime(env);
+		const added = await addDomainForUser(env, userId, domainName, nodeRuntime
+			? {
+				receivingProvider: "ses",
+				sendingProvider: "ses",
+				enableRouting: false,
+				enableSending: false,
+				replaceMxRecords: false,
+			}
+			: {
+				enableRouting: true,
+				enableSending: firstRunParsed.data.enableSending ?? true,
+				replaceMxRecords: firstRunParsed.data.replaceMxRecords,
+			});
 		const domain = added.domain;
 		changes = added.changes;
-		await ensureEmailRoutingRuleToWorker(env, domain.zoneId, email);
-		changes.createdAddressRules.push(email);
+		if (!nodeRuntime) {
+			await ensureEmailRoutingRuleToWorker(env, domain.zoneId, email);
+			changes.createdAddressRules.push(email);
+		}
 		const mailboxId = newId("mbx");
 		await db.insert(mailboxes).values({
 			id: mailboxId,
