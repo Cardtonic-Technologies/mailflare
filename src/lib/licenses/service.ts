@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import packageJson from "../../../package.json";
 import { getDb } from "@/db";
 import { licenseSettings } from "@/db/schema";
+import { isNodeRuntime } from "@/lib/runtime";
 import { LICENSE_PRODUCT_IDS } from "./constants";
 import { callPaymugLicenseApi } from "./paymug";
 import type { LicenseEntitlements, LicensePlan, LicenseStatus, PaymugLicenseAction } from "./types";
@@ -46,17 +47,20 @@ export async function getLicenseStatus(env: CloudflareEnv): Promise<LicenseStatu
 export async function getLicenseEntitlements(env: CloudflareEnv): Promise<LicenseEntitlements> {
 	try {
 		const status = await getLicenseStatus(env);
-		// Pro adds accounts up to its seat limit; Team is unlimited and also unlocks shared mailboxes.
+		// The self-hosted install creates staff mailboxes without a Paymug plan.
+		// Pro still caps seats when a paid license is active. Team stays unlimited.
+		const selfHosted = isNodeRuntime(env);
 		return {
 			plan: status.plan,
 			canCustomizeBranding: status.active,
-			canManageAccounts: status.active,
+			canManageAccounts: status.active || selfHosted,
 			canShareMailboxes: status.active && status.plan === "team",
 			accountSeatLimit: status.seatLimit,
 			canForwardEmail: status.active,
 		};
 	} catch {
-		return { plan: "community", canCustomizeBranding: false, canManageAccounts: false, canShareMailboxes: false, accountSeatLimit: 0, canForwardEmail: false };
+		const selfHosted = isNodeRuntime(env);
+		return { plan: "community", canCustomizeBranding: false, canManageAccounts: selfHosted, canShareMailboxes: false, accountSeatLimit: selfHosted ? null : 0, canForwardEmail: false };
 	}
 }
 
